@@ -1,50 +1,33 @@
-import asyncio
-from aiobleserver import Server, Service, Characteristic, UUID
+import os
+import time
+from pydbus import SystemBus
 
-# Definišite UUID-ove za servis i karakteristiku
-SERVICE_UUID = UUID("12345678-1234-5678-1234-56789abcdef0")
-CHARACTERISTIC_UUID = UUID("12345678-1234-5678-1234-56789abcdef1")
+# Povezivanje na System Bus
+bus = SystemBus()
 
-# Kreirajte klasu za karakteristiku
-class MyCharacteristic(Characteristic):
-    def __init__(self):
-        super().__init__(CHARACTERISTIC_UUID, ["read", "write"])
-        self.value = b"Hello, BLE!"
+# Povezivanje na Bluetooth adapter
+bluetooth_adapter = bus.get('org.bluez', '/org/bluez/hci0')
 
-    async def read(self):
-        return self.value
+# Uključivanje Bluetooth-a
+bluetooth_adapter.Powered = True
+print("Bluetooth je uključen.")
 
-    async def write(self, value):
-        self.value = value
+# Uključivanje agent-a
+os.system('bluetoothctl agent on')
 
-# Kreirajte klasu za servis
-class MyService(Service):
-    def __init__(self):
-        super().__init__(SERVICE_UUID, [MyCharacteristic()])
+# Uključivanje vidljivosti
+os.system('bluetoothctl discoverable on')
+print("Uređaj je sada vidljiv.")
 
-# Definišite funkciju za pokretanje servera
-async def main():
-    # Kreirajte server
-    server = Server()
-    
-    # Dodajte servis
-    await server.add_service(MyService())
+# Opcionalno: Uključivanje skeniranja za povezivanje
+os.system('bluetoothctl scan on')
+print("Skeniranje je pokrenuto...")
 
-    # Pokrenite server
-    await server.start()
-    print("BLE server je pokrenut")
-
-    # Očekujte veze
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        pass
-
-    # Zaustavite server kada se završi
-    await server.stop()
-    print("BLE server je zaustavljen")
-
-# Pokrenite glavni događaj
-if __name__ == "__main__":
-    asyncio.run(main())
+# Držite program aktivnim da biste mogli primati veze
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    # Uklanjanje skeniranja i izlazak iz programa
+    os.system('bluetoothctl scan off')
+    print("Skeniranje je zaustavljeno.")
