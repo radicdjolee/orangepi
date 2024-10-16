@@ -1,64 +1,52 @@
-import dbus
-import dbus.mainloop.glib
-from gi.repository import GLib
+import asyncio
+from bleak import BleakServer, BleakGATTCharacteristic, BleakGATTService
 import subprocess
 
-# Funkcija za dobijanje liste dostupnih Wi-Fi mreža
+# UUID za uslugu i karakteristike (promeni ako je potrebno)
+SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
+CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1"
+
+# Funkcija za pretragu dostupnih WiFi mreža
 def get_wifi_networks():
-    try:
-        result = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi'], stdout=subprocess.PIPE)
-        networks = result.stdout.decode('utf-8').strip().split("\n")
-        return networks
-    except Exception as e:
-        print(f"Greška prilikom dobijanja Wi-Fi mreža: {e}")
-        return []
+    # Koristi nmcli za pretragu dostupnih WiFi mreža
+    result = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi'], stdout=subprocess.PIPE)
+    networks = result.stdout.decode().split('\n')
+    # Filtriraj prazne linije
+    networks = [network for network in networks if network]
+    return networks
 
-# BLE karakteristika
-class WiFiCharacteristic:
-    def __init__(self, bus, index, service):
-        self.path = service.path + "/char" + str(index)
-        self.uuid = '12345678-1234-5678-1234-56789abcdef1'
-        self.service = service
-        self.flags = ['read']
+# Callback funkcija kada telefon zatraži podatke
+async def on_read_wifi_data(characteristic: BleakGATTCharacteristic):
+    wifi_networks = get_wifi_networks()
+    # Spajanje dostupnih mreža u jedan string
+    wifi_data = "\n".join(wifi_networks)
+    print(f"Sending WiFi networks: {wifi_data}")
+    return wifi_data.encode('utf-8')
+
+# Kreiraj BLE server i uslugu
+async def run_ble_server():
+    server = BleakServer()
+
+    # Kreiraj BLE uslugu
+    wifi_service = BleakGATTService(SERVICE_UUID)
     
-    def ReadValue(self, options):
-        print("Pročitan zahtev za Wi-Fi mreže")
-        networks = get_wifi_networks()
-        networks_str = "\n".join(networks)
-        return dbus.Array([dbus.Byte(c) for c in networks_str.encode()], signature=dbus.Signature('y'))
+    # Kreiraj karakteristiku za slanje WiFi mreža
+    wifi_characteristic = BleakGATTCharacteristic(CHARACTERISTIC_UUID, ["read"], on_read=on_read_wifi_data)
+    
+    # Dodaj karakteristiku usluzi
+    wifi_service.add_characteristic(wifi_characteristic)
+    
+    # Dodaj uslugu serveru
+    server.add_service(wifi_service)
 
-# BLE usluga
-class WiFiService:
-    def __init__(self, bus, index):
-        self.path = f"/org/bluez/example/service{index}"
-        self.uuid = '12345678-1234-5678-1234-56789abcdef0'
-        self.characteristics = [WiFiCharacteristic(bus, 0, self)]
+    # Pokreni BLE server
+    print("Starting BLE server...")
+    await server.start("OrangePi WiFi Scanner")
+    print("BLE server started and advertising.")
 
-# BLE aplikacija
-class BLEApplication:
-    def __init__(self, bus):
-        self.path = '/org/bluez/example'
-        self.services = [WiFiService(bus, 0)]
+    # Drži server aktivnim
+    await asyncio.sleep(3600)  # Server će raditi 1 sat
 
-    def get_service(self, index):
-        return self.services[index]
-
-# Main funkcija
-def main():
-    # Pokretanje DBus
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
-
-    # Kreiraj BLE aplikaciju
-    app = BLEApplication(bus)
-
-    # Uključivanje BLE periferije
-    adapter = bus.get_object('org.bluez', '/org/bluez/hci0')
-    adapter_props = dbus.Interface(adapter, dbus.PROPERTIES_IFACE)
-    adapter_props.Set('org.bluez.Adapter1', 'Powered', dbus.Boolean(1))
-
-    print("BLE server pokrenut i spreman za povezivanje...")
-    GLib.MainLoop().run()
-
+# Glavna funkcija
 if __name__ == "__main__":
-    main()
+    asyncio.run(run_ble_server())
