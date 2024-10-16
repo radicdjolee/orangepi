@@ -1,55 +1,64 @@
-import asyncio
-from bleak import BleakServer
+import dbus
+import dbus.mainloop.glib
+from gi.repository import GLib
 import subprocess
 
-# UUID-ovi za BLE uslugu i karakteristike
-SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
-CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1"
-
-# Funkcija za dobijanje dostupnih Wi-Fi mreža
-def get_available_wifi():
-    wifi_list = []
+# Funkcija za dobijanje liste dostupnih Wi-Fi mreža
+def get_wifi_networks():
     try:
-        # Koristi iwlist da dobije dostupne mreže (potreban sudo pristup)
-        result = subprocess.check_output(['sudo', 'iwlist', 'wlan0', 'scan'])
-        result = result.decode('utf-8')
-        # Parsiranje rezultata i pronalazak SSID-ova
-        networks = result.split("Cell ")
-        for network in networks[1:]:
-            if "ESSID:" in network:
-                ssid = network.split("ESSID:")[1].strip().replace('"', '')
-                wifi_list.append(ssid)
+        result = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi'], stdout=subprocess.PIPE)
+        networks = result.stdout.decode('utf-8').strip().split("\n")
+        return networks
     except Exception as e:
         print(f"Greška prilikom dobijanja Wi-Fi mreža: {e}")
-    return wifi_list
+        return []
 
-# Callback funkcija za rukovanje BLE zahtevima
-async def read_wifi(characteristic):
-    wifi_list = get_available_wifi()
-    return "\n".join(wifi_list).encode("utf-8")
+# BLE karakteristika
+class WiFiCharacteristic:
+    def __init__(self, bus, index, service):
+        self.path = service.path + "/char" + str(index)
+        self.uuid = '12345678-1234-5678-1234-56789abcdef1'
+        self.service = service
+        self.flags = ['read']
+    
+    def ReadValue(self, options):
+        print("Pročitan zahtev za Wi-Fi mreže")
+        networks = get_wifi_networks()
+        networks_str = "\n".join(networks)
+        return dbus.Array([dbus.Byte(c) for c in networks_str.encode()], signature=dbus.Signature('y'))
 
-# Main funkcija za pokretanje BLE servera
-async def main():
-    # Kreiraj BLE server
-    server = BleakServer(SERVICE_UUID)
-    print("BLE server pokrenut")
+# BLE usluga
+class WiFiService:
+    def __init__(self, bus, index):
+        self.path = f"/org/bluez/example/service{index}"
+        self.uuid = '12345678-1234-5678-1234-56789abcdef0'
+        self.characteristics = [WiFiCharacteristic(bus, 0, self)]
 
-    # Dodaj karakteristiku za Wi-Fi listu
-    server.add_characteristic(CHARACTERISTIC_UUID, properties=["read"], value=read_wifi)
+# BLE aplikacija
+class BLEApplication:
+    def __init__(self, bus):
+        self.path = '/org/bluez/example'
+        self.services = [WiFiService(bus, 0)]
 
-    # Start servera
-    await server.start()
-    print(f"Server je aktivan sa UUID {SERVICE_UUID}")
+    def get_service(self, index):
+        return self.services[index]
 
-    # Očekuj povezivanje
-    try:
-        await asyncio.Event().wait()  # Očekuje dok je server aktivan
-    except KeyboardInterrupt:
-        print("Zaustavljanje servera...")
-        await server.stop()
+# Main funkcija
+def main():
+    # Pokretanje DBus
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+
+    # Kreiraj BLE aplikaciju
+    app = BLEApplication(bus)
+
+    # Uključivanje BLE periferije
+    adapter = bus.get_object('org.bluez', '/org/bluez/hci0')
+    adapter_props = dbus.Interface(adapter, dbus.PROPERTIES_IFACE)
+    adapter_props.Set('org.bluez.Adapter1', 'Powered', dbus.Boolean(1))
+
+    print("BLE server pokrenut i spreman za povezivanje...")
+    GLib.MainLoop().run()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        print(f"Greška: {e}")
+    main()
