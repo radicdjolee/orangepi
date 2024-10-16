@@ -1,32 +1,27 @@
-from bluepy.btle import Peripheral, Service, Characteristic, UUID, Descriptor
+from bluepy.btle import Peripheral, UUID, Advertisement
 
-# Definisanje UUID za servis i karakteristiku
-service_uuid = UUID("12345678-1234-5678-1234-56789abcdef0")
-char_uuid = UUID("abcdef01-1234-5678-1234-56789abcdef0")
+def advertise_ble_device():
+    # Kreiraj oglas (Advertisement) za BLE uređaj
+    advertisement = Advertisement()
+    
+    # Definiši UUID koji će uređaj oglašavati
+    service_uuid = UUID("12345678-1234-5678-1234-56789abcdef0")  # Nasumičan UUID
+    advertisement.addServiceUUID(service_uuid)
+    
+    # Podešavanje informacija o uređaju
+    advertisement.addName("OrangePiBLE")  # Ime uređaja koji će biti vidljiv
+    
+    # Startuj oglašavanje
+    print("Oglašavam BLE uređaj...")
+    advertisement.start()
+    
+    # Oglašavaj neograničeno dugo
+    try:
+        while True:
+            pass  # Uređaj ostaje vidljiv dok se ne prekine
+    except KeyboardInterrupt:
+        print("Zaustavljam oglašavanje BLE uređaja...")
+        advertisement.stop()
 
-# Kreiranje klase za BLE server
-class BLEServer(Peripheral):
-    def __init__(self):
-        Peripheral.__init__(self)
-
-        # Kreiraj BLE servis
-        service = Service(service_uuid, True)
-        self.addService(service)
-
-        # Kreiraj karakteristiku unutar servisa
-        characteristic = Characteristic(
-            char_uuid, Characteristic.PROPERTY_READ | Characteristic.PROPERTY_WRITE, 
-            Characteristic.PERM_READ | Characteristic.PERM_WRITE
-        )
-        service.addCharacteristic(characteristic)
-
-        # Dodaj karakteristiku servisu
-        descriptor = Descriptor(UUID(0x2901), "Description")
-        characteristic.addDescriptor(descriptor)
-
-        # Aktiviraj server
-        self.advertise(True)
-        print("BLE server aktivan!")
-
-# Pokreni BLE server
-server = BLEServer()
+if __name__ == "__main__":
+    advertise_ble_device()
