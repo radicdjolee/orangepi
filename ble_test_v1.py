@@ -1,34 +1,50 @@
-import pygatt
-from pygatt.backends import GATTToolBackend
+import asyncio
+from aiobleserver import Server, Service, Characteristic, UUID
 
-# Inicijalizacija GATT servera
-adapter = GATTToolBackend()
+# Definišite UUID-ove za servis i karakteristiku
+SERVICE_UUID = UUID("12345678-1234-5678-1234-56789abcdef0")
+CHARACTERISTIC_UUID = UUID("12345678-1234-5678-1234-56789abcdef1")
 
-# UUID servisa i karakteristike
-SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
-CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1"
+# Kreirajte klasu za karakteristiku
+class MyCharacteristic(Characteristic):
+    def __init__(self):
+        super().__init__(CHARACTERISTIC_UUID, ["read", "write"])
+        self.value = b"Hello, BLE!"
 
-# Funkcija za rukovanje vezivanjem
-def on_connect(device):
-    print(f"Connected to {device}")
+    async def read(self):
+        return self.value
 
-# Funkcija za rukovanje odbacivanjem
-def on_disconnect(device):
-    print(f"Disconnected from {device}")
+    async def write(self, value):
+        self.value = value
 
-try:
-    adapter.start()
+# Kreirajte klasu za servis
+class MyService(Service):
+    def __init__(self):
+        super().__init__(SERVICE_UUID, [MyCharacteristic()])
+
+# Definišite funkciju za pokretanje servera
+async def main():
+    # Kreirajte server
+    server = Server()
     
-    # Dodajte servis i karakteristiku
-    adapter.add_service(SERVICE_UUID)
-    adapter.add_characteristic(CHARACTERISTIC_UUID, properties=['notify', 'read'], initial_value=b'Hello, Bluetooth!')
+    # Dodajte servis
+    await server.add_service(MyService())
 
-    print("Bluetooth server pokrenut...")
-    
-    # U petlji, čekajte na veze
-    adapter.run()
+    # Pokrenite server
+    await server.start()
+    print("BLE server je pokrenut")
 
-except Exception as e:
-    print(f"Error: {e}")
-finally:
-    adapter.stop()
+    # Očekujte veze
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        pass
+
+    # Zaustavite server kada se završi
+    await server.stop()
+    print("BLE server je zaustavljen")
+
+# Pokrenite glavni događaj
+if __name__ == "__main__":
+    asyncio.run(main())
