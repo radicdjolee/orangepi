@@ -1,30 +1,34 @@
-from bluepy.btle import Peripheral, UUID, Characteristic, Service
+import pygatt
+from pygatt.backends import GATTToolBackend
 
-class MyBluetoothServer(Peripheral):
-    def __init__(self):
-        Peripheral.__init__(self)
-        
-        # Definišite UUID servisa i karakteristika
-        self.service_uuid = UUID("12345678-1234-5678-1234-56789abcdef0")
-        self.characteristic_uuid = UUID("12345678-1234-5678-1234-56789abcdef1")
-        
-        # Dodajte servis
-        self.service = self.addService(self.service_uuid)
-        
-        # Dodajte karakteristiku
-        self.characteristic = self.addCharacteristic(
-            self.characteristic_uuid,
-            properties=["read", "notify"],
-            permissions=["readable"]
-        )
-        
-        self.setValue("Hello, Bluetooth!".encode('utf-8'))
+# Inicijalizacija GATT servera
+adapter = GATTToolBackend()
 
-    def start(self):
-        self.advertiseService(self.service_uuid)
-        print("Bluetooth server pokrenut...")
-        self.run()
+# UUID servisa i karakteristike
+SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
+CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1"
 
-if __name__ == "__main__":
-    server = MyBluetoothServer()
-    server.start()
+# Funkcija za rukovanje vezivanjem
+def on_connect(device):
+    print(f"Connected to {device}")
+
+# Funkcija za rukovanje odbacivanjem
+def on_disconnect(device):
+    print(f"Disconnected from {device}")
+
+try:
+    adapter.start()
+    
+    # Dodajte servis i karakteristiku
+    adapter.add_service(SERVICE_UUID)
+    adapter.add_characteristic(CHARACTERISTIC_UUID, properties=['notify', 'read'], initial_value=b'Hello, Bluetooth!')
+
+    print("Bluetooth server pokrenut...")
+    
+    # U petlji, čekajte na veze
+    adapter.run()
+
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    adapter.stop()
