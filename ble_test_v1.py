@@ -1,33 +1,30 @@
-import os
-import time
-from pydbus import SystemBus
+from bluepy import btle
 
-# Povezivanje na System Bus
-bus = SystemBus()
+class MyDelegate(btle.DefaultDelegate):
+    def __init__(self):
+        btle.DefaultDelegate.__init__(self)
 
-# Povezivanje na Bluetooth adapter
-bluetooth_adapter = bus.get('org.bluez', '/org/bluez/hci0')
+def main():
+    # Postavljanje BLE uređaja
+    peripheral = btle.Peripheral()
 
-# Uključivanje Bluetooth-a
-bluetooth_adapter.Powered = True
-print("Bluetooth je uključen.")
+    # Postavljanje oglašavanja
+    peripheral.setDelegate(MyDelegate())
+    peripheral.setAdvertisingData(0x02, "MyBLEDevice", 0x01)
 
-# Uključivanje agent-a
-os.system('bluetoothctl agent on')
+    # Pokretanje oglašavanja
+    peripheral.advertiseStart()
 
-# Uključivanje vidljivosti
-os.system('bluetoothctl discoverable on')
-print("Uređaj je sada vidljiv.")
+    print("BLE uređaj je sada vidljiv!")
+    
+    try:
+        while True:
+            pass  # Održavanje procesa
+    except KeyboardInterrupt:
+        pass
+    finally:
+        peripheral.advertiseStop()
+        peripheral.disconnect()
 
-# Opcionalno: Uključivanje skeniranja za povezivanje
-os.system('bluetoothctl scan on')
-print("Skeniranje je pokrenuto...")
-
-# Držite program aktivnim da biste mogli primati veze
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    # Uklanjanje skeniranja i izlazak iz programa
-    os.system('bluetoothctl scan off')
-    print("Skeniranje je zaustavljeno.")
+if __name__ == "__main__":
+    main()
