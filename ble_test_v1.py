@@ -5,18 +5,18 @@ class MyDelegate(btle.DefaultDelegate):
         btle.DefaultDelegate.__init__(self)
 
 def main():
-    # Postavljanje BLE uređaja
+    # Kreiranje BLE uređaja
     peripheral = btle.Peripheral()
-
-    # Postavljanje oglašavanja
     peripheral.setDelegate(MyDelegate())
-    peripheral.setAdvertisingData(0x02, "MyBLEDevice", 0x01)
 
-    # Pokretanje oglašavanja
-    peripheral.advertiseStart()
+    # Konfiguracija oglašavanja
+    advertising_data = btle.AdvertiseData()
+    advertising_data.addServiceUUID(btle.UUID("180F"))  # UUID za Battery Service
+    advertising_data.addLocalName("MyBLEDevice")  # Ime uređaja
+    peripheral.advertiseStart(advertising_data)
 
     print("BLE uređaj je sada vidljiv!")
-    
+
     try:
         while True:
             pass  # Održavanje procesa
