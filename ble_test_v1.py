@@ -1,62 +1,99 @@
-from pydbus import SystemBus
-from gi.repository import GLib
+"""
+Example for a BLE 4.0 Server using a GATT dictionary of services and
+characteristics
+"""
+import sys
+import logging
+import asyncio
+import threading
 
-# Put do BlueZ servisa na D-Bus-u
-BLUEZ_SERVICE_NAME = 'org.bluez'
-GATT_MANAGER_IFACE = 'org.bluez.GattManager1'
-LE_ADVERTISING_MANAGER_IFACE = 'org.bluez.LEAdvertisingManager1'
-GATT_CHR_IFACE = 'org.bluez.GattCharacteristic1'
+from typing import Any, Dict, Union
 
-# Definišemo naš servis
-class Application:
-    def __init__(self):
-        self.bus = SystemBus()
-        self.adapter_path = '/org/bluez/hci0'  # Adapter path, proveri sa hcitool dev
-        self.service_manager = self.bus.get(BLUEZ_SERVICE_NAME, self.adapter_path)
-        self.services = []
+from bless import (  # type: ignore
+    BlessServer,
+    BlessGATTCharacteristic,
+    GATTCharacteristicProperties,
+    GATTAttributePermissions,
+)
 
-    def register_app(self):
-        # Registrovanje servisa u BlueZ
-        self.service_manager.RegisterApplication(self.get_path(), {}, reply_handler=self.on_registered, error_handler=self.on_error)
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(name=__name__)
 
-    def get_path(self):
-        return '/myapp/service'
+trigger: Union[asyncio.Event, threading.Event]
+if sys.platform in ["darwin", "win32"]:
+    trigger = threading.Event()
+else:
+    trigger = asyncio.Event()
 
-    def on_registered(self):
-        print("GATT aplikacija registrovana!")
 
-    def on_error(self, error):
-        print(f"Greška pri registrovanju GATT aplikacije: {error}")
+def read_request(characteristic: BlessGATTCharacteristic, **kwargs) -> bytearray:
+    logger.debug(f"Reading {characteristic.value}")
+    return characteristic.value
 
-class TestService:
-    def __init__(self, index):
-        self.path = f"/myapp/service{index}"
-        self.uuid = '0000180a-0000-1000-8000-00805f9b34fb'  # Primer UUID-a
-        self.characteristics = []
 
-    def get_path(self):
-        return self.path
+def write_request(characteristic: BlessGATTCharacteristic, value: Any, **kwargs):
+    characteristic.value = value
+    logger.debug(f"Char value set to {characteristic.value}")
+    if characteristic.value == b"\x0f":
+        logger.debug("Nice")
+        trigger.set()
 
-class TestCharacteristic:
-    def __init__(self, service, index):
-        self.path = f"{service.get_path()}/char{index}"
-        self.uuid = '00002a29-0000-1000-8000-00805f9b34fb'  # Primer UUID-a
-        self.value = []
 
-    def get_path(self):
-        return self.path
+async def run(loop):
+    trigger.clear()
 
-# Pokretanje servisa
-app = Application()
-service = TestService(0)
-char = TestCharacteristic(service, 0)
+    # Instantiate the server
+    gatt: Dict = {
+        "A07498CA-AD5B-474E-940D-16F1FBE7E8CD": {
+            "51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B": {
+                "Properties": (
+                    GATTCharacteristicProperties.read
+                    | GATTCharacteristicProperties.write
+                    | GATTCharacteristicProperties.indicate
+                ),
+                "Permissions": (
+                    GATTAttributePermissions.readable
+                    | GATTAttributePermissions.writeable
+                ),
+                "Value": None,
+            }
+        },
+        "5c339364-c7be-4f23-b666-a8ff73a6a86a": {
+            "bfc0c92f-317d-4ba9-976b-cc11ce77b4ca": {
+                "Properties": GATTCharacteristicProperties.read,
+                "Permissions": GATTAttributePermissions.readable,
+                "Value": bytearray(b"\x69"),
+            }
+        },
+    }
+    my_service_name = "Test Service"
+    server = BlessServer(name=my_service_name, loop=loop)
+    server.read_request_func = read_request
+    server.write_request_func = write_request
 
-app.services.append(service)
-service.characteristics.append(char)
+    await server.add_gatt(gatt)
+    await server.start()
+    logger.debug(server.get_characteristic("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B"))
+    logger.debug("Advertising")
+    logger.info(
+        "Write '0xF' to the advertised characteristic: "
+        + "51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B"
+    )
+    if trigger.__module__ == "threading":
+        trigger.wait()
+    else:
+        await trigger.wait()
+    await asyncio.sleep(2)
+    logger.debug("Updating")
+    server.get_characteristic("51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B").value = bytearray(
+        b"i"
+    )
+    server.update_value(
+        "A07498CA-AD5B-474E-940D-16F1FBE7E8CD", "51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B"
+    )
+    await asyncio.sleep(5)
+    await server.stop()
 
-# Pokreni aplikaciju
-app.register_app()
 
-# Pokrećemo glavni loop
-loop = GLib.MainLoop()
-loop.run()
+loop = asyncio.get_event_loop()
+loop.run_until_complete(run(loop))
