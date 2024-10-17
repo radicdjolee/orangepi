@@ -1,35 +1,36 @@
-from bluepy import btle
 
-# Definiši UUID za uslugu
-UUID_SERVICE = "12345678-1234-5678-1234-56789abcdef0"
+from bluetooth import *
 
-class MyBLEServer(btle.Peripheral):
-    def __init__(self):
-        super().__init__()
-        
-        # Dodaj uslugu
-        self.service = btle.Service(UUID_SERVICE)
-        self.addService(self.service)
+server_sock=BluetoothSocket( RFCOMM )
+server_sock.bind(("",PORT_ANY))
+server_sock.listen(1)
 
-    def advertise(self):
-        self.setAdvertisingData(b'\x02\x01\x06' + self.service.getHandle())
-        self.advertiseStart()
+port = server_sock.getsockname()[1]
 
-def main():
-    server = MyBLEServer()
+uuid = "94f39d29-7d6d-437d-973b-fba39e49d4ee"
 
-    # Oglasi se
-    server.advertise()
-    print("BLE server je sada vidljiv.")
+advertise_service( server_sock, "SampleServer",
+                   service_id = uuid,
+                   service_classes = [ uuid, SERIAL_PORT_CLASS ],
+                   profiles = [ SERIAL_PORT_PROFILE ], 
+#                   protocols = [ OBEX_UUID ] 
+                    )
+                   
+print("Waiting for connection on RFCOMM channel %d" % port)
 
-    # Održavaj program u radu
-    try:
-        while True:
-            pass
-    except KeyboardInterrupt:
-        print("Zaustavljam server...")
-    finally:
-        server.disconnect()
+client_sock, client_info = server_sock.accept()
+print("Accepted connection from ", client_info)
 
-if __name__ == "__main__":
-    main()
+try:
+    while True:
+        data = client_sock.recv(1024)
+        if len(data) == 0: break
+        print("received [%s]" % data)
+except IOError:
+    pass
+
+print("disconnected")
+
+client_sock.close()
+server_sock.close()
+print("all done")
