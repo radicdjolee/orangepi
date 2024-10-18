@@ -1,36 +1,25 @@
+import dbus
+import dbus.mainloop.glib
+from gi.repository import GLib
 
-from bluetooth import *
+def register_app_cb():
+    print("GATT server je uspešno registrovan.")
 
-server_sock=BluetoothSocket( RFCOMM )
-server_sock.bind(("",PORT_ANY))
-server_sock.listen(1)
+def register_app_error_cb(error):
+    print(f"Neuspešno registrovanje GATT servera: {error}")
 
-port = server_sock.getsockname()[1]
+def main():
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
 
-uuid = "94f39d29-7d6d-437d-973b-fba39e49d4ee"
+    # Interfejs za GATT server
+    obj = bus.get_object('org.bluez', '/org/bluez/hci0')
+    gatt_manager = dbus.Interface(obj, 'org.bluez.GattManager1')
 
-advertise_service( server_sock, "SampleServer",
-                   service_id = uuid,
-                   service_classes = [ uuid, SERIAL_PORT_CLASS ],
-                   profiles = [ SERIAL_PORT_PROFILE ], 
-#                   protocols = [ OBEX_UUID ] 
-                    )
-                   
-print("Waiting for connection on RFCOMM channel %d" % port)
+    # Definiši servise, karakteristike ovde
+    gatt_manager.RegisterApplication('/', {}, reply_handler=register_app_cb, error_handler=register_app_error_cb)
+    
+    GLib.MainLoop().run()
 
-client_sock, client_info = server_sock.accept()
-print("Accepted connection from ", client_info)
-
-try:
-    while True:
-        data = client_sock.recv(1024)
-        if len(data) == 0: break
-        print("received [%s]" % data)
-except IOError:
-    pass
-
-print("disconnected")
-
-client_sock.close()
-server_sock.close()
-print("all done")
+if __name__ == "__main__":
+    main()
